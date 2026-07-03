@@ -1,0 +1,48 @@
+// Recuerda instalar las bibliotecas en las pestaña de wokwi Library Manager 
+#include <WiFi.h>
+#include <PubSubClient.h>
+#include <DHT.h>
+
+#define DHTPIN 15
+DHT dht(DHTPIN, DHT22);
+
+WiFiClient   net;
+PubSubClient mqtt(net);
+
+const char* TOPIC = "wokwi/dht22/datos";
+unsigned long ultimo = 0;
+
+void setup() {
+  Serial.begin(115200);
+  dht.begin();
+
+  WiFi.begin("Wokwi-GUEST", "");          // red abierta de Wokwi
+  while (WiFi.status() != WL_CONNECTED) delay(100);
+  Serial.println("WiFi conectado");
+
+  mqtt.setServer("broker.hivemq.com", 1883);
+  randomSeed(micros());
+}
+
+void loop() {
+  // Reconecta al broker si hace falta
+  if (!mqtt.connected()) {
+    String id = "esp32-wokwi-" + String(random(0xffff), HEX);
+    mqtt.connect(id.c_str());
+  }
+  mqtt.loop();
+
+  
+  if (millis() - ultimo > 2000) {
+    ultimo = millis();
+
+    float t = dht.readTemperature();
+    float h = dht.readHumidity();
+    if (isnan(t) || isnan(h)) return;
+
+    char msg[64];
+    snprintf(msg, sizeof(msg), "{\"temperatura\":%.1f,\"humedad\":%.1f}", t, h);
+    mqtt.publish(TOPIC, msg);
+    Serial.println(msg);
+  }
+}
